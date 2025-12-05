@@ -1,0 +1,140 @@
+# Root package.json (Monorepo)
+# /package.json
+{
+  "name": "cleanit-mvp",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm:dev:*\"",
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:admin": "npm run dev --workspace=apps/admin",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}
+
+---
+
+# Backend package.json
+# /backend/package.json
+{
+  "name": "cleanit-backend",
+  "version": "1.0.0",
+  "main": "src/app.js",
+  "scripts": {
+    "dev": "nodemon src/app.js",
+    "start": "node src/app.js",
+    "migrate": "prisma migrate dev",
+    "seed": "node src/utils/seed.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "prisma": "^5.7.0",
+    "@prisma/client": "^5.7.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "multer": "^1.4.5-lts.1",
+    "aws-sdk": "^2.1498.0",
+    "razorpay": "^2.9.2",
+    "redis": "^4.6.11",
+    "express-validator": "^7.0.1",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.1.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
+
+---
+
+# Web App package.json
+# /apps/web/package.json
+{
+  "name": "cleanit-web",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "^14.0.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@chakra-ui/react": "^2.8.2",
+    "@emotion/react": "^11.11.1",
+    "@emotion/styled": "^11.11.0",
+    "framer-motion": "^10.16.16",
+    "axios": "^1.6.2",
+    "react-hook-form": "^7.49.2",
+    "yup": "^1.3.3",
+    "mapbox-gl": "^3.0.1",
+    "next-seo": "^6.4.0",
+    "zustand": "^4.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "@types/react": "^18.2.45",
+    "typescript": "^5.3.3"
+  }
+}
+
+---
+
+# Admin Dashboard package.json
+# /apps/admin/package.json
+{
+  "name": "cleanit-admin",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "next start -p 3001"
+  },
+  "dependencies": {
+    "next": "^14.0.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@chakra-ui/react": "^2.8.2",
+    "axios": "^1.6.2",
+    "recharts": "^2.10.3"
+  }
+}
+
+---
+
+# Shared API Client package.json
+# /packages/api-client/package.json
+{
+  "name": "@cleanit/api-client",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "dependencies": {
+    "axios": "^1.6.2"
+  }
+}
+
+---
+
+# Shared Components package.json
+# /packages/shared/package.json
+{
+  "name": "@cleanit/shared",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "peerDependencies": {
+    "react": "^18.2.0"
+  }
+}

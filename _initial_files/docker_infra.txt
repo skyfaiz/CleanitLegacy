@@ -1,0 +1,509 @@
+# docker-compose.yml
+
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: cleanit-db
+    environment:
+      POSTGRES_USER: cleanit
+      POSTGRES_PASSWORD: cleanit_password
+      POSTGRES_DB: cleanit_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cleanit"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: cleanit-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cleanit-backend
+    ports:
+      - "5000:5000"
+    environment:
+      DATABASE_URL: postgresql://cleanit:cleanit_password@postgres:5432/cleanit_db
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: your-jwt-secret-change-in-production
+      NODE_ENV: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    command: npm run dev
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: cleanit-web
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:5000/api
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
+
+  admin:
+    build:
+      context: ./apps/admin
+      dockerfile: Dockerfile
+    container_name: cleanit-admin
+    ports:
+      - "3001:3001"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:5000/api
+    volumes:
+      - ./apps/admin:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
+
+volumes:
+  postgres_data:
+  redis_data:
+
+---
+
+# backend/Dockerfile
+
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY prisma ./prisma/
+
+# Install dependencies
+RUN npm install
+
+# Copy application files
+COPY . .
+
+# Generate Prisma Client
+RUN npx prisma generate
+
+EXPOSE 5000
+
+CMD ["npm", "run", "dev"]
+
+---
+
+# apps/web/Dockerfile
+
+FROM node:18-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+
+EXPOSE 3000
+
+CMD ["npm", "run", "dev"]
+
+---
+
+# apps/admin/Dockerfile
+
+FROM node:18-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+
+EXPOSE 3001
+
+CMD ["npm", "run", "dev"]
+
+---
+
+# .github/workflows/ci-cd.yml
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install dependencies
+        working-directory: ./backend
+        run: npm install
+        
+      - name: Run Prisma migrations
+        working-directory: ./backend
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test_db
+          
+      - name: Run tests
+        working-directory: ./backend
+        run: npm test
+
+  build-backend:
+    needs: test-backend
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+          
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+        
+      - name: Build and push Docker image
+        working-directory: ./backend
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: cleanit-backend
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+  deploy-web:
+    needs: test-backend
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+        
+      - name: Pull Vercel Environment Information
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        working-directory: ./apps/web
+        
+      - name: Build Project Artifacts
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        working-directory: ./apps/web
+        
+      - name: Deploy Project Artifacts to Vercel
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+        working-directory: ./apps/web
+
+---
+
+# infrastructure/terraform/main.tf
+
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = "ap-south-1"
+}
+
+# VPC
+resource "aws_vpc" "main" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+
+  tags = {
+    Name = "cleanit-vpc"
+  }
+}
+
+# RDS PostgreSQL
+resource "aws_db_instance" "postgres" {
+  identifier             = "cleanit-db"
+  engine                 = "postgres"
+  engine_version         = "15.3"
+  instance_class         = "db.t3.micro"
+  allocated_storage      = 20
+  storage_type           = "gp2"
+  db_name                = "cleanit"
+  username               = var.db_username
+  password               = var.db_password
+  publicly_accessible    = false
+  skip_final_snapshot    = true
+  vpc_security_group_ids = [aws_security_group.rds.id]
+
+  tags = {
+    Name = "cleanit-postgres"
+  }
+}
+
+# S3 Bucket for uploads
+resource "aws_s3_bucket" "uploads" {
+  bucket = "cleanit-uploads-${var.environment}"
+
+  tags = {
+    Name = "cleanit-uploads"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "uploads" {
+  bucket = aws_s3_bucket.uploads.id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+# ECS Cluster
+resource "aws_ecs_cluster" "main" {
+  name = "cleanit-cluster"
+
+  tags = {
+    Name = "cleanit-ecs"
+  }
+}
+
+# Security Groups
+resource "aws_security_group" "rds" {
+  name        = "cleanit-rds-sg"
+  description = "Security group for RDS"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Variables
+variable "db_username" {
+  description = "Database username"
+  type        = string
+  default     = "cleanit"
+}
+
+variable "db_password" {
+  description = "Database password"
+  type        = string
+  sensitive   = true
+}
+
+variable "environment" {
+  description = "Environment name"
+  type        = string
+  default     = "production"
+}
+
+---
+
+# README.md
+
+# Cleanit MVP - Full Stack Application
+
+A platform connecting citizens who fund cleanup campaigns with cleaners who complete them.
+
+## Project Structure
+
+```
+cleanit-mvp/
+├── backend/          # Node.js/Express API
+├── apps/
+│   ├── web/         # Next.js Web App
+│   └── admin/       # Admin Dashboard
+├── packages/        # Shared packages
+└── infrastructure/  # Terraform configs
+```
+
+## Quick Start
+
+### Prerequisites
+- Node.js 18+
+- Docker & Docker Compose
+- PostgreSQL 15
+
+### Development Setup
+
+1. Clone the repository
+```bash
+git clone https://github.com/your-org/cleanit-mvp.git
+cd cleanit-mvp
+```
+
+2. Install dependencies
+```bash
+npm install
+```
+
+3. Set up environment variables
+```bash
+cp backend/.env.example backend/.env
+# Edit backend/.env with your values
+```
+
+4. Start services with Docker
+```bash
+docker-compose up -d
+```
+
+5. Run database migrations
+```bash
+cd backend
+npx prisma migrate dev
+```
+
+6. Start development servers
+```bash
+npm run dev
+```
+
+The services will be available at:
+- Backend API: http://localhost:5000
+- Web App: http://localhost:3000
+- Admin Dashboard: http://localhost:3001
+
+## Technology Stack
+
+### Backend
+- Node.js + Express
+- PostgreSQL + Prisma ORM
+- Redis for caching
+- AWS S3 for file storage
+- Razorpay for payments
+
+### Frontend
+- Next.js 14
+- Chakra UI
+- React Hook Form
+- Zustand for state management
+
+### Infrastructure
+- Docker & Docker Compose
+- AWS (ECS, RDS, S3)
+- Terraform for IaC
+- GitHub Actions for CI/CD
+
+## API Documentation
+
+### Authentication
+- POST /api/auth/register - Register new user
+- POST /api/auth/login - Login
+- POST /api/auth/refresh - Refresh token
+
+### Campaigns
+- GET /api/campaigns - List campaigns
+- GET /api/campaigns/:id - Get campaign details
+- POST /api/campaigns - Create campaign (auth required)
+- PATCH /api/campaigns/:id - Update campaign (auth required)
+
+### Contributions
+- POST /api/contributions/create-order - Create payment order
+- POST /api/contributions/verify - Verify payment
+
+### Jobs
+- GET /api/jobs/available - List available jobs (cleaner only)
+- POST /api/jobs/:id/claim - Claim a job (cleaner only)
+- POST /api/jobs/:id/complete - Submit completion proof
+
+### Admin
+- GET /api/admin/dashboard/stats - Dashboard statistics
+- GET /api/admin/jobs/pending - Jobs pending verification
+- POST /api/admin/jobs/:id/verify - Verify completed job
+- POST /api/admin/jobs/:id/reject - Reject job
+
+## Deployment
+
+### Backend Deployment (AWS ECS)
+```bash
+cd infrastructure/terraform
+terraform init
+terraform apply
+```
+
+### Web App Deployment (Vercel)
+```bash
+cd apps/web
+vercel --prod
+```
+
+## Contributing
+
+1. Create a feature branch
+2. Make your changes
+3. Run tests: `npm test`
+4. Submit a pull request
+
+## License
+
+MIT License

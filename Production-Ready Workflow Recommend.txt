@@ -1,0 +1,1236 @@
+Production-Ready Workflow Recommendations for Cleanit
+1. Campaign Management Workflow
+Current State Issues
+
+No expiration mechanism
+Partial funding limbo
+No validation rules
+Missing status transitions
+
+Production Requirements
+CAMPAIGN LIFECYCLE STATES:
+DRAFT → ACTIVE → FUNDED → COMPLETED → CLOSED
+         ↓         ↓
+      EXPIRED   CANCELLED
+Implementation Specifications:
+A. Campaign Creation
+javascriptValidation Rules:
+- Title: 10-100 characters
+- Description: 50-1000 characters
+- Target Amount: ₹500 - ₹50,000 (prevent micro/unrealistic campaigns)
+- Location: Mandatory with coordinates validation
+- Photo: Required, max 5MB, JPG/PNG only
+- Automatic spam detection: Flag if >3 campaigns from same location
+
+Business Logic:
+- Set expiration: Auto-calculate based on target
+  * ₹500-2000: 30 days
+  * ₹2001-10000: 45 days
+  * ₹10001+: 60 days
+- Creator cannot contribute to own campaign
+- Status: DRAFT (requires admin approval for first-time users)
+B. Campaign Expiration Handler
+javascriptDaily Cron Job (runs at midnight):
+1. Query campaigns where:
+   - status = 'ACTIVE'
+   - expiresAt < NOW()
+   - amountRaised < targetAmount
+
+2. For each expired campaign:
+   a. Check funding percentage:
+      - If ≥ 80%: Convert to FUNDED (create job with adjusted amount)
+      - If < 80%: Set status to EXPIRED
+   
+   b. Process refunds for EXPIRED campaigns:
+      - Query all contributions for campaignId
+      - Create refund jobs queue (process asynchronously)
+      - Send notification to contributors
+      - Set campaign.refundStatus = 'PROCESSING'
+
+3. Refund Processing (separate worker):
+   - Initialize Razorpay refund API
+   - Process in batches of 10
+   - Retry failed refunds (max 3 attempts)
+   - Log all transactions
+   - Update campaign.refundStatus = 'COMPLETED'
+   - Send confirmation emails
+C. Campaign Cancellation
+javascriptUser-Initiated Cancellation:
+- Available only if: status = 'ACTIVE' AND amountRaised = 0
+- Creator clicks "Cancel Campaign"
+- Status → CANCELLED
+- Mark campaign.cancelledAt = NOW()
+
+Admin-Initiated Cancellation:
+- Available for any status except COMPLETED
+- Requires reason (logged)
+- If funds exist: Trigger refund process
+- Send notification to creator and contributors
+```
+
+---
+
+## 2. Job Management Workflow
+
+### Current State Issues
+- No completion deadline
+- No unclaim mechanism
+- Race conditions on claiming
+- No quality metrics
+
+### Production Requirements
+```
+JOB LIFECYCLE STATES:
+AVAILABLE → CLAIMED → COMPLETED → VERIFIED → PAID
+              ↓                        ↓
+          RELEASED                 REJECTED → CLAIMED
+Implementation Specifications:
+A. Job Creation (Automated)
+javascriptTrigger: Campaign status changes to FUNDED
+
+Process:
+1. Create Job record:
+   {
+     campaignId: campaign.id,
+     status: 'AVAILABLE',
+     amount: campaign.targetAmount * 0.95,
+     platformFee: campaign.targetAmount * 0.05,
+     location: campaign.location,
+     createdAt: NOW(),
+     expiresAt: NOW() + 90 days
+   }
+
+2. Index job in search database (for location-based queries)
+
+3. Notify nearby cleaners:
+   - Query cleaners within 10km radius
+   - Send push notification
+   - Rate limit: Max 1 notification per cleaner per day
+
+4. Update campaign:
+   - status = 'FUNDED'
+   - jobId = job.id
+B. Job Claiming (with Race Condition Handling)
+javascriptEndpoint: POST /api/jobs/:id/claim
+
+Transaction-based Implementation:
+BEGIN TRANSACTION;
+
+1. Lock job row:
+   SELECT * FROM jobs WHERE id = :id FOR UPDATE;
+
+2. Validate:
+   - job.status = 'AVAILABLE'
+   - cleaner.id != job.lastClaimedBy (prevent same cleaner re-claiming)
+   - cleaner.activeJobs < 5 (prevent hoarding)
+
+3. Update job:
+   {
+     status: 'CLAIMED',
+     claimedBy: cleaner.id,
+     claimedAt: NOW(),
+     completionDeadline: NOW() + 7 days,
+     claimCount: job.claimCount + 1
+   }
+
+4. Create activity log:
+   - action: 'JOB_CLAIMED'
+   - userId: cleaner.id
+   - jobId: job.id
+
+5. Send notifications:
+   - To cleaner: "Job claimed successfully. Complete by [date]"
+   - To campaign creator: "A cleaner has claimed your campaign"
+
+COMMIT TRANSACTION;
+
+Error Handling:
+- If already claimed: Return 409 Conflict
+- If cleaner at limit: Return 429 Too Many Requests
+- If transaction fails: Rollback and return 500
+C. Job Auto-Release System
+javascriptHourly Cron Job:
+
+1. Query overdue jobs:
+   SELECT * FROM jobs 
+   WHERE status = 'CLAIMED' 
+   AND completionDeadline < NOW()
+   AND claimCount < 3;
+
+2. For each job:
+   a. Update status:
+      - status = 'AVAILABLE'
+      - claimedBy = NULL
+      - lastClaimedBy = job.claimedBy (for tracking)
+      - completionDeadline = NULL
+   
+   b. Record penalty:
+      - Insert into cleaner_penalties
+      - Affect cleaner rating
+      - If 3+ penalties: Suspend cleaner account
+   
+   c. Notify cleaner:
+      - "Job auto-released due to missed deadline"
+      - "This affects your completion rate"
+   
+   d. Notify nearby cleaners (job available again)
+
+3. Handle max attempts (claimCount >= 3):
+   - Flag job for admin review
+   - Possible issues: Location inaccessible, amount too low
+   - Admin can adjust amount or mark campaign as problematic
+D. Job Completion
+javascriptEndpoint: POST /api/jobs/:id/complete
+
+Validation:
+- job.status = 'CLAIMED'
+- job.claimedBy = currentUser.id
+- Photo upload: Required, max 10MB
+- Photo metadata: Extract GPS coordinates, timestamp
+
+Process:
+1. Upload photo to cloud storage (S3/Cloudinary):
+   - Path: /jobs/{jobId}/completion/{timestamp}.jpg
+   - Generate thumbnail
+   - Extract EXIF data
+
+2. Image validation:
+   - Check timestamp (must be after claimDate)
+   - Verify GPS coordinates (within 500m of campaign location)
+   - Run basic quality check (not too dark/blurry)
+
+3. Update job:
+   {
+     status: 'COMPLETED',
+     completedAt: NOW(),
+     completionPhoto: photoUrl,
+     completionPhotoMetadata: exifData
+   }
+
+4. Update campaign:
+   - status = 'COMPLETED'
+
+5. Notify admin:
+   - "New job completion pending verification"
+   - Add to verification queue
+
+6. Notify campaign creator:
+   - "Your campaign has been completed!"
+   - Show before/after photos
+   - "Pending admin verification"
+
+Quality Checks (Auto-flag for admin):
+- If GPS coordinates don't match: Flag as "Location Mismatch"
+- If photo timestamp suspicious: Flag as "Timestamp Issue"
+- If cleaner's completion rate < 60%: Flag as "Low Quality Cleaner"
+E. Job Unclaim Feature
+javascriptEndpoint: POST /api/jobs/:id/unclaim
+
+Available only if:
+- job.status = 'CLAIMED'
+- job.claimedBy = currentUser.id
+- job.completionDeadline > NOW() + 24 hours (can't unclaim last minute)
+
+Process:
+1. Update job:
+   - status = 'AVAILABLE'
+   - claimedBy = NULL
+   - unclaimReason = userInput (required)
+   - unclaimedAt = NOW()
+
+2. No penalty applied (voluntary release)
+
+3. Record in activity log
+
+4. Notify nearby cleaners
+
+3. Admin Verification Workflow
+Current State Issues
+
+Fully manual process
+No verification guidelines
+No quality tracking
+Bottleneck for scaling
+
+Production Requirements
+Implementation Specifications:
+A. Verification Queue System
+javascriptAdmin Dashboard - Verification Tab:
+
+Priority Queue Logic:
+1. Urgent (completed >48 hours ago)
+2. High-value jobs (>₹5000)
+3. First-time cleaners
+4. Standard queue (FIFO)
+
+Display for each job:
+- Campaign before photo (side-by-side)
+- Completion after photo
+- Location map (with GPS data)
+- Cleaner profile (completion rate, rating)
+- Time since completion
+- Auto-flags (if any)
+
+Verification Checklist:
+□ Photos clearly show same location
+□ Visible improvement in cleanliness
+□ No signs of staging/fraud
+□ GPS coordinates match
+□ Timestamp reasonable
+B. Approve Job
+javascriptEndpoint: POST /api/admin/jobs/:id/verify
+
+Request Body:
+{
+  action: 'APPROVE',
+  notes: 'Optional admin notes'
+}
+
+Process:
+1. Update job:
+   {
+     status: 'VERIFIED',
+     verifiedBy: admin.id,
+     verifiedAt: NOW(),
+     verificationNotes: notes
+   }
+
+2. Update cleaner metrics:
+   - completedJobs++
+   - totalEarnings += job.amount
+   - Calculate new rating
+
+3. Create payout record:
+   {
+     jobId: job.id,
+     cleanerId: job.claimedBy,
+     amount: job.amount,
+     status: 'PENDING',
+     scheduledFor: NOW() + 24 hours (cooling period)
+   }
+
+4. Notify cleaner:
+   - "Your job has been verified!"
+   - "Payment of ₹X will be processed within 24 hours"
+   - "Please ensure bank details are updated"
+
+5. Notify campaign creator:
+   - "Your campaign is complete and verified"
+   - "Thank you for making your community cleaner!"
+C. Reject Job
+javascriptEndpoint: POST /api/admin/jobs/:id/verify
+
+Request Body:
+{
+  action: 'REJECT',
+  reason: 'REQUIRED - from predefined list',
+  notes: 'Additional details',
+  allowRetry: boolean
+}
+
+Rejection Reasons (Enum):
+- POOR_QUALITY: "Cleaning quality insufficient"
+- WRONG_LOCATION: "Photos don't match campaign location"
+- FAKE_COMPLETION: "Evidence of staging/fraud"
+- PHOTO_ISSUES: "Photo quality too poor to verify"
+- OTHER: Custom reason required
+
+Process:
+1. Update job:
+   {
+     status: allowRetry ? 'CLAIMED' : 'FAILED',
+     rejectedAt: NOW(),
+     rejectedBy: admin.id,
+     rejectionReason: reason,
+     rejectionNotes: notes,
+     retryAllowed: allowRetry,
+     completionPhoto: null (if retry allowed)
+   }
+
+2. Record in cleaner history:
+   - rejections++
+   - If rejections > 3: Flag account for review
+   - Affects cleaner rating
+
+3. Notify cleaner:
+   - "Your job submission was not approved"
+   - Show rejection reason
+   - If allowRetry: "Please re-do and upload new photo"
+   - If not: "Job cancelled. No payment will be processed"
+
+4. If serious fraud detected:
+   - Create fraud investigation case
+   - Suspend cleaner account
+   - Notify compliance team
+D. Verification SLA Tracking
+javascriptMetrics to Track:
+- Average verification time
+- Verifications pending >24 hours
+- Verifications pending >48 hours (breach)
+- Admin workload distribution
+
+Alert System:
+- If queue >20 jobs: Alert admin team
+- If any job >48 hours: Escalate to senior admin
+- If verification time >24h avg: Suggest adding admins
+
+Admin Performance Dashboard:
+- Verifications completed today/week
+- Average processing time
+- Approval vs rejection rate
+- Jobs escalated
+
+4. Payment Processing Workflow
+Current State Issues
+
+Manual payout trigger
+No escrow transparency
+No transaction history
+Missing failure handling
+
+Production Requirements
+Implementation Specifications:
+A. Escrow System
+javascriptWhen Contribution Received:
+
+1. Razorpay Payment Webhook Handler:
+   POST /api/webhooks/razorpay/payment
+
+   Verify webhook signature (security critical)
+   
+   Process:
+   a. Create contribution record:
+      {
+        campaignId: metadata.campaignId,
+        userId: metadata.userId,
+        amount: amount,
+        razorpayPaymentId: paymentId,
+        status: 'SUCCESS',
+        escrowStatus: 'HELD'
+      }
+   
+   b. Update campaign:
+      - amountRaised += amount
+      - Check if targetAmount reached → trigger job creation
+   
+   c. Funds remain in Cleanit's Razorpay account (escrow)
+   
+   d. Send confirmation email with receipt
+
+2. Escrow Tracking Table:
+   CREATE TABLE escrow_transactions (
+     id UUID PRIMARY KEY,
+     contributionId UUID REFERENCES contributions(id),
+     amount DECIMAL(10,2),
+     status ENUM('HELD', 'RELEASED', 'REFUNDED'),
+     heldAt TIMESTAMP,
+     releasedAt TIMESTAMP,
+     releasedFor VARCHAR(20) -- 'PAYOUT' or 'REFUND'
+   );
+B. Automated Payout System
+javascriptDaily Cron Job (runs at 10 AM):
+
+1. Query eligible payouts:
+   SELECT * FROM payouts 
+   WHERE status = 'PENDING' 
+   AND scheduledFor <= NOW()
+   AND cleaner.bankDetailsVerified = true;
+
+2. Batch Processing (10 payouts at a time):
+   
+   For each payout:
+   BEGIN TRANSACTION;
+   
+   a. Verify cleaner bank details:
+      - Account number
+      - IFSC code
+      - Name matches profile
+   
+   b. Initialize Razorpay Payout API:
+      razorpay.payouts.create({
+        account_number: platform.accountNumber,
+        fund_account_id: cleaner.fundAccountId,
+        amount: payout.amount * 100, // paise
+        currency: "INR",
+        mode: "IMPS", // or UPI/NEFT
+        purpose: "payout",
+        queue_if_low_balance: true,
+        reference_id: payout.id
+      });
+   
+   c. Update payout record:
+      {
+        status: 'PROCESSING',
+        razorpayPayoutId: response.id,
+        initiatedAt: NOW()
+      }
+   
+   d. Update escrow:
+      - status = 'RELEASED'
+      - releasedFor = 'PAYOUT'
+   
+   e. Create transaction record:
+      {
+        type: 'PAYOUT',
+        fromAccount: 'PLATFORM_ESCROW',
+        toAccount: cleaner.id,
+        amount: payout.amount,
+        status: 'PROCESSING',
+        reference: payout.razorpayPayoutId
+      }
+   
+   COMMIT;
+
+3. Webhook handler for payout status:
+   POST /api/webhooks/razorpay/payout
+   
+   On SUCCESS:
+   - payout.status = 'PAID'
+   - payout.paidAt = NOW()
+   - job.status = 'PAID'
+   - Notify cleaner: "Payment of ₹X credited to your account"
+   
+   On FAILED/REVERSED:
+   - payout.status = 'FAILED'
+   - payout.failureReason = response.failure_reason
+   - Retry logic (max 3 attempts)
+   - After 3 failures: Flag for manual intervention
+   - Notify cleaner: "Payment failed. Our team will contact you."
+
+4. Error Handling:
+   - Low balance: Queue for later
+   - Invalid bank details: Notify cleaner to update
+   - API timeout: Retry with exponential backoff
+   - All failures logged in error_logs table
+C. Refund Processing
+javascriptTriggered by Campaign Expiration/Cancellation:
+
+Async Job Queue (process 10 refunds per batch):
+
+For each contribution:
+BEGIN TRANSACTION;
+
+1. Validate refund eligibility:
+   - contribution.escrowStatus = 'HELD'
+   - campaign.status IN ('EXPIRED', 'CANCELLED')
+   - refund not already processed
+
+2. Calculate refund amount:
+   - Full amount if campaign never funded
+   - Deduct gateway fees if policy allows (₹3-5)
+
+3. Initialize Razorpay Refund API:
+   razorpay.payments.refund(paymentId, {
+     amount: refundAmount * 100,
+     notes: {
+       reason: 'Campaign expired/cancelled',
+       campaignId: campaign.id
+     }
+   });
+
+4. Update contribution:
+   {
+     refundStatus: 'PROCESSING',
+     refundAmount: refundAmount,
+     refundInitiatedAt: NOW(),
+     razorpayRefundId: response.id
+   }
+
+5. Update escrow:
+   - status = 'RELEASED'
+   - releasedFor = 'REFUND'
+
+6. Create transaction record:
+   {
+     type: 'REFUND',
+     fromAccount: 'PLATFORM_ESCROW',
+     toAccount: contributor.id,
+     amount: refundAmount,
+     status: 'PROCESSING'
+   }
+
+COMMIT;
+
+Webhook Handler:
+POST /api/webhooks/razorpay/refund
+
+On SUCCESS:
+- contribution.refundStatus = 'COMPLETED'
+- contribution.refundedAt = NOW()
+- Send email: "Refund of ₹X processed for campaign [name]"
+
+On FAILED:
+- contribution.refundStatus = 'FAILED'
+- Retry (max 3 attempts)
+- Flag for manual processing
+- Contact support team
+
+SLA: All refunds processed within 5-7 business days
+D. Transaction History & Reconciliation
+javascriptFor Each User Type:
+
+Citizen:
+GET /api/users/me/transactions
+Response:
+{
+  contributions: [
+    {
+      campaignId, campaignTitle,
+      amount, date, status,
+      razorpayPaymentId,
+      receipt: downloadUrl
+    }
+  ],
+  refunds: [...],
+  totalContributed: amount,
+  totalRefunded: amount
+}
+
+Cleaner:
+GET /api/cleaners/me/earnings
+Response:
+{
+  payouts: [
+    {
+      jobId, campaignTitle,
+      amount, status, paidAt,
+      razorpayPayoutId
+    }
+  ],
+  pending: [...],
+  totalEarned: amount,
+  totalPending: amount,
+  averagePerJob: amount
+}
+
+Admin:
+GET /api/admin/financial-overview
+Response:
+{
+  totalRaised: amount,
+  totalPaidOut: amount,
+  platformFees: amount,
+  escrowBalance: amount,
+  pendingPayouts: amount,
+  pendingRefunds: amount
+}
+
+Daily Reconciliation Job:
+- Match all Razorpay transactions with internal records
+- Flag discrepancies
+- Generate reconciliation report
+- Alert finance team if mismatch
+
+5. Notification System
+Production Requirements
+Implementation Specifications:
+A. Multi-Channel Notifications
+javascriptNotification Channels:
+1. In-App (real-time via WebSocket)
+2. Email (transactional via SendGrid/AWS SES)
+3. Push Notifications (FCM for mobile)
+4. SMS (for critical updates via Twilio)
+
+Notification Service Architecture:
+- Event-driven (pub/sub pattern)
+- Queue-based (Bull/Redis)
+- Template management
+- Delivery tracking
+- Preference management
+B. Notification Events & Templates
+javascriptCampaign Events:
+1. CAMPAIGN_CREATED
+   - To: Admin (if first-time user)
+   - Channels: In-app
+   - Template: "New campaign pending approval"
+
+2. CAMPAIGN_FUNDED
+   - To: Creator, Contributors
+   - Channels: Email, In-app, Push
+   - Template: "Campaign '[name]' reached its goal!"
+
+3. CAMPAIGN_CONTRIBUTION
+   - To: Creator
+   - Channels: In-app
+   - Template: "[Name] contributed ₹X to your campaign"
+
+4. CAMPAIGN_EXPIRED
+   - To: Creator, Contributors
+   - Channels: Email, In-app
+   - Template: "Campaign expired. Refund initiated."
+
+Job Events:
+5. JOB_AVAILABLE
+   - To: Nearby cleaners (within radius)
+   - Channels: Push, In-app
+   - Template: "New job available near you - Earn ₹X"
+   - Rate limit: Max 1/day per cleaner
+
+6. JOB_CLAIMED
+   - To: Creator
+   - Channels: In-app
+   - Template: "Your campaign claimed by cleaner"
+
+7. JOB_COMPLETED
+   - To: Creator, Admin
+   - Channels: Email, In-app
+   - Template: "Job completed! Pending verification"
+
+8. JOB_VERIFIED
+   - To: Cleaner, Creator
+   - Channels: Email, In-app, Push
+   - Template: "Job verified. Payment processing..."
+
+9. JOB_REJECTED
+   - To: Cleaner
+   - Channels: Email, SMS, In-app
+   - Template: "Job submission rejected: [reason]"
+
+10. JOB_AUTO_RELEASED
+    - To: Cleaner
+    - Channels: SMS, Email, In-app
+    - Template: "Job released due to missed deadline"
+
+Payment Events:
+11. PAYOUT_SUCCESS
+    - To: Cleaner
+    - Channels: SMS, Email, In-app
+    - Template: "₹X credited to your account"
+
+12. PAYOUT_FAILED
+    - To: Cleaner, Admin
+    - Channels: SMS, Email
+    - Template: "Payment failed. Update bank details"
+
+13. REFUND_PROCESSED
+    - To: Contributor
+    - Channels: Email, In-app
+    - Template: "Refund of ₹X processed"
+
+Reminder Events:
+14. DEADLINE_REMINDER_24H
+    - To: Cleaner
+    - Channels: Push, SMS
+    - Template: "Complete job in 24 hours"
+
+15. DEADLINE_REMINDER_1H
+    - To: Cleaner
+    - Channels: Push, SMS
+    - Template: "1 hour left to complete job"
+
+Implementation:
+// Event emitter pattern
+eventBus.emit('JOB_COMPLETED', {
+  jobId: job.id,
+  cleanerId: job.claimedBy,
+  campaignId: job.campaignId,
+  amount: job.amount
+});
+
+// Notification service listener
+notificationService.on('JOB_COMPLETED', async (data) => {
+  const job = await getJob(data.jobId);
+  const cleaner = await getUser(data.cleanerId);
+  const campaign = await getCampaign(data.campaignId);
+  const creator = await getUser(campaign.createdBy);
+  
+  // Send to creator
+  await sendNotification({
+    userId: creator.id,
+    type: 'JOB_COMPLETED',
+    channels: ['email', 'in_app'],
+    data: {
+      campaignTitle: campaign.title,
+      beforePhoto: campaign.photo,
+      afterPhoto: job.completionPhoto,
+      cleanerName: cleaner.name
+    }
+  });
+  
+  // Send to admin
+  await sendNotification({
+    userId: 'ADMIN_QUEUE',
+    type: 'VERIFICATION_NEEDED',
+    channels: ['in_app'],
+    priority: 'HIGH',
+    data: job
+  });
+});
+C. User Notification Preferences
+javascriptUser Settings:
+{
+  notifications: {
+    email: {
+      campaignUpdates: true,
+      jobAlerts: true,
+      paymentUpdates: true,
+      marketing: false
+    },
+    push: {
+      jobAlerts: true,
+      urgentOnly: false
+    },
+    sms: {
+      paymentUpdates: true,
+      criticalOnly: true
+    }
+  }
+}
+
+Respect preferences in notification service:
+if (user.preferences.email.jobAlerts === false) {
+  // Skip email channel for job alerts
+}
+
+Always send (override preferences):
+- Payment confirmations
+- Refund notifications
+- Account security alerts
+- Legal/compliance notices
+
+6. Security & Compliance
+Production Requirements
+A. API Security
+javascript1. Rate Limiting (express-rate-limit):
+   
+   General API:
+   - 100 requests per 15 minutes per IP
+   
+   Authentication endpoints:
+   - 5 requests per 15 minutes per IP
+   - Exponential backoff on failures
+   
+   Payment webhooks:
+   - Webhook signature verification (mandatory)
+   - IP whitelist (Razorpay IPs only)
+   
+   Admin endpoints:
+   - 200 requests per minute
+   - IP whitelist (office/VPN only)
+
+2. JWT Implementation:
+   
+   Access Token:
+   - Expiry: 15 minutes
+   - Include: userId, role, permissions
+   
+   Refresh Token:
+   - Expiry: 7 days
+   - Stored in httpOnly cookie
+   - Rotate on refresh
+   
+   Token Blacklist:
+   - Redis-based
+   - Store revoked tokens until expiry
+
+3. Input Validation (Joi/Zod):
+   
+   Every endpoint validates:
+   - Data types
+   - String lengths
+   - Number ranges
+   - Required fields
+   - Format (email, phone, URL)
+   
+   Sanitization:
+   - Strip HTML tags (prevent XSS)
+   - Escape SQL characters
+   - Validate file uploads
+
+4. CORS Policy:
+   
+   Production:
+   - Whitelist: [cleanit.in, www.cleanit.in, app.cleanit.in]
+   - Credentials: true
+   - Methods: GET, POST, PUT, DELETE
+   
+   Development:
+   - Localhost:3000, localhost:5173
+
+5. File Upload Security:
+   
+   Photos:
+   - Max size: 10MB
+   - Allowed types: JPG, PNG, WEBP
+   - Virus scan (ClamAV)
+   - Strip EXIF (except GPS/timestamp)
+   - Generate new filename (UUID)
+   - Store on CDN (not server)
+   
+   Validation:
+   - Check magic numbers (not just extension)
+   - Reject executable files
+   - Reject SVG (XSS risk)
+B. Database Security
+javascript1. Connection:
+   - SSL/TLS required
+   - Connection pooling (max 20)
+   - Prepared statements only
+   - No raw queries with user input
+
+2. Sensitive Data:
+   - Passwords: bcrypt (12 rounds)
+   - Bank details: AES-256 encryption
+   - API keys: Environment variables
+   - Razorpay keys: AWS Secrets Manager
+
+3. Backups:
+   - Daily automated backups
+   - Retention: 30 days
+   - Encrypted backups
+   - Test restore monthly
+
+4. Access Control:
+   - Principle of least privilege
+   - Read-only replicas for analytics
+   - Admin actions logged
+C. Compliance Requirements
+javascript1. Data Privacy (GDPR/DPDPA):
+   
+   User Rights:
+   - Right to access data (export)
+   - Right to deletion (anonymize, not delete)
+   - Right to rectification
+   - Right to data portability
+   
+   Implementation:
+   GET /api/users/me/data-export
+   - Returns JSON of all user data
+   - Include: profile, campaigns, contributions, jobs
+   
+   DELETE /api/users/me/account
+   - Soft delete (status = 'DELETED')
+   - Anonymize: name = 'Deleted User', email = hash
+   - Retain financial records (7 years legal requirement)
+   - Delete photos from CDN
+
+2. Financial Compliance:
+   
+   Tax Documentation:
+   - For cleaners earning >₹50,000/year:
+     * Collect PAN card
+     * Generate Form 26AS data
+     * Annual earning statement
+   
+   - For platform:
+     * Maintain GST records
+     * TDS deduction for high earners
+     * Audit trail for all transactions
+
+3. Terms of Service:
+   
+   Required Sections:
+   - Service description
+   - User responsibilities
+   - Payment terms & refunds
+   - Liability limitations
+   - Dispute resolution
+   - Governing law (Indian jurisdiction)
+   - Cleaner classification (independent contractors)
+   
+   Acceptance:
+   - Checkbox on registration (logged)
+   - Version tracking
+   - Re-acceptance on major updates
+
+4. Photo Usage Rights:
+   
+   Terms:
+   - User grants license to use photos
+   - For platform marketing (with consent)
+   - Before/after comparisons
+   - User can revoke (remove from public gallery)
+   
+   Attribution:
+   - Photos credited to campaign creator
+   - Cleaners credited for completion
+
+5. KYC for Cleaners:
+   
+   Required Documents:
+   - Government ID (Aadhaar/PAN)
+   - Bank account verification (penny drop)
+   - Phone number OTP verification
+   
+   Verification Process:
+   - Automated ID verification (Signzy/Digio)
+   - Manual review if auto-fails
+   - Status: PENDING → VERIFIED → ACTIVE
+   - Reject if mismatch
+
+7. Monitoring & Alerting
+Production Requirements
+javascript1. Application Monitoring (New Relic/Datadog):
+   
+   Metrics:
+   - API response times (p50, p95, p99)
+   - Error rates (by endpoint)
+   - Database query performance
+   - Memory/CPU usage
+   - Request throughput
+   
+   Alerts:
+   - Error rate > 1%: Warning
+   - Error rate > 5%: Critical
+   - Response time p95 > 1s: Warning
+   - Database connections > 80%: Warning
+
+2. Business Metrics (Custom Dashboard):
+   
+   Real-time:
+   - Active campaigns
+   - Total funds in escrow
+   - Jobs pending verification
+   - Payouts pending
+   
+   Daily:
+   - New campaigns created
+   - Campaigns funded
+   - Jobs completed
+   - Revenue (platform fees)
+   - User signups (by role)
+   
+   Weekly:
+   - Campaign success rate
+   - Average funding time
+   - Job completion rate
+   - User retention
+
+3. Security Monitoring:
+   
+   Log Events:
+   - Failed login attempts (>5 = alert)
+   - Admin actions (all logged)
+   - Payment webhook failures
+   - Unusual API patterns
+   
+   Alerts:
+   - Multiple failed logins: Lock account
+   - Suspicious payment activity: Flag
+   - Data export requests: Notify admin
+
+4. Error Tracking (Sentry):
+   
+   Capture:
+   - Unhandled exceptions
+   - Failed API calls
+   - Payment failures
+   - Job processing errors
+   
+   Context:
+   - User ID
+   - Request payload
+   - Stack trace
+   - Environment
+
+5. Uptime Monitoring (Pingdom/UptimeRobot):
+   
+   Endpoints:
+   - /health (every 1 min)
+   - /api/campaigns (every 5 min)
+   - Payment webhook URL
+   
+   Alerts:
+   - Downtime >2 min: SMS to on-call
+   - Response time >3s: Email
+
+8. Testing Strategy
+Production Requirements
+javascript1. Unit Tests (Jest):
+   - All business logic functions
+   - Payment calculations
+   - Status transitions
+   - Coverage target: >80%
+
+2. Integration Tests:
+   - API endpoint tests
+   - Database transactions
+   - External API mocks (Razorpay)
+   - Webhook handlers
+
+3. E2E Tests (Playwright/Cypress):
+   
+   Critical User Flows:
+   - User registration → campaign creation → funding
+   - Cleaner claims job → completes → gets paid
+   - Admin verification workflow
+   - Payment failure recovery
+   
+   Run: Before every production deploy
+
+4. Load Testing (k6/Artillery):
+   
+   Scenarios:
+   - 100 concurrent users browsingFContinuecampaigns
+
+50 simultaneous contributions
+10 job claims per second
+
+Goals:
+
+Response time <500ms at load
+Zero errors under normal load
+Graceful degradation under 2x load
+
+
+Security Testing:
+
+Penetration testing (quarterly)
+Dependency vulnerability scanning (automated)
+SQL injection testing
+XSS testing
+CSRF protection verification
+
+
+
+
+---
+
+## 9. Deployment & DevOps
+
+### Production Requirements
+```javascript
+1. Infrastructure (AWS/GCP):
+   
+   Architecture:
+   - Load Balancer (ELB/ALB)
+   - App Servers (EC2/ECS) - Auto-scaling 2-10 instances
+   - Database (RDS PostgreSQL) - Multi-AZ
+   - Cache (Redis/ElastiCache)
+   - File Storage (S3/CloudFront CDN)
+   - Queue (SQS/RabbitMQ)
+   
+   Environments:
+   - Development
+   - Staging (production replica)
+   - Production
+
+2. CI/CD Pipeline (GitHub Actions/GitLab CI):
+   
+   On Pull Request:
+   - Run linters
+   - Run unit tests
+   - Build Docker image
+   - Deploy to staging
+   
+   On Merge to Main:
+   - Run full test suite
+   - Build production image
+   - Tag version
+   - Deploy to production (blue-green)
+   - Run smoke tests
+   - Rollback if tests fail
+
+3. Database Migrations:
+   - Version controlled (Prisma/TypeORM)
+   - Backward compatible
+   - Tested on staging first
+   - Rollback plan documented
+
+4. Feature Flags (LaunchDarkly):
+   - Deploy code disabled
+   - Enable for beta users
+   - Gradual rollout
+   - Kill switch for emergencies
+
+5. Logging (ELK/CloudWatch):
+   - Structured JSON logs
+   - Request ID tracking
+   - Log levels: ERROR, WARN, INFO, DEBUG
+   - Retention: 30 days
+   - Archive: 1 year
+```
+
+---
+
+## 10. Support & Operations
+
+### Production Requirements
+```javascript
+1. Admin Dashboard Enhancements:
+   
+   Must Have:
+   - Real-time metrics
+   - Verification queue
+   - User search & management
+   - Transaction lookup
+   - Dispute resolution interface
+   - Manual payout trigger
+   - Bulk actions (refunds, notifications)
+
+2. Customer Support Tools:
+   
+   Ticketing System:
+   - In-app support widget
+   - Email support: support@cleanit.in
+   - Categories: Payment, Job, Account, Other
+   - SLA: Response in 24 hours
+   
+   Knowledge Base:
+   - FAQs for each user type
+   - Video tutorials
+   - Troubleshooting guides
+
+3. Fraud Detection:
+   
+   Red Flags:
+   - Same cleaner claiming all jobs in area
+   - Photos reused across jobs
+   - Rapid create-delete patterns
+   - GPS spoofing detected
+   - Multiple accounts from same device
+   
+   Actions:
+   - Auto-flag suspicious activity
+   - Manual review by compliance team
+   - Account suspension
+   - Refund processing
+
+4. Dispute Resolution:
+   
+   Process:
+   - User submits dispute (with evidence)
+   - Admin reviews within 48 hours
+   - Mediation attempt
+   - Decision logged
+   - Payment hold/release
+   - Appeal option
+
+5. Performance Optimization:
+   
+   Scheduled Tasks:
+   - Clear old notifications (>90 days)
+   - Archive completed campaigns (>1 year)
+   - Optimize database indexes
+   - Cache invalidation
+   - CDN purge for updated images
+```
+
+---
+
+## Implementation Priority (MVP → Scale)
+
+### Phase 1: MVP (Weeks 1-4)
+- Core workflows functional
+- Manual admin processes acceptable
+- Basic notifications (email only)
+- Manual payment verification
+
+### Phase 2: Production Ready (Weeks 5-8)
+- Automated cron jobs
+- Multi-channel notifications
+- Automated payouts
+- Security hardening
+- Monitoring setup
+
+### Phase 3: Scale (Weeks 9-12)
+- Performance optimization
+- Advanced analytics
+- Fraud detection
+- Mobile app
+- API for partners
+
+**Priority recommendation**: Focus on automated job release, payment processing, and notification system—these remove manual bottlenecks and are critical for scale.
+
+notifications should not be location based and for now all notifs will be in app
+Updated Notification System (In-App Only, No Location-Based Triggers)

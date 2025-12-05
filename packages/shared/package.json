@@ -1,0 +1,8 @@
+{
+    "name": "@cleanit/shared",
+    "version": "1.0.0",
+    "main": "index.ts",
+    "peerDependencies": {
+        "react": "^18.2.0"
+    }
+}

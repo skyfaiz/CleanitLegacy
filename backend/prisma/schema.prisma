@@ -1,0 +1,136 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  phone         String?
+  name          String?
+  password      String
+  role          UserRole       @default(CITIZEN)
+  avatarUrl     String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  
+  // Relations
+  campaigns     Campaign[]
+  contributions Contribution[]
+  jobs          Job[]
+  webSessions   WebSession[]
+  pageViews     PageView[]
+
+  @@map("users")
+}
+
+model Campaign {
+  id            String          @id @default(cuid())
+  title         String
+  description   String?
+  imageUrl      String
+  location      String
+  latitude      Float?
+  longitude     Float?
+  targetAmount  Float
+  amountRaised  Float           @default(0)
+  status        CampaignStatus  @default(ACTIVE)
+  creatorId     String
+  creator       User            @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  
+  // Relations
+  contributions Contribution[]
+  job           Job?
+  pageViews     PageView[]
+
+  @@index([status, createdAt])
+  @@index([location])
+  @@map("campaigns")
+}
+
+model Contribution {
+  id         String   @id @default(cuid())
+  amount     Float
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  paymentId  String?
+  status     String   @default("pending") // pending, completed, failed
+  createdAt  DateTime @default(now())
+
+  @@index([campaignId])
+  @@index([userId])
+  @@map("contributions")
+}
+
+model Job {
+  id                 String     @id @default(cuid())
+  status             JobStatus  @default(AVAILABLE)
+  campaignId         String     @unique
+  campaign           Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  cleanerId          String?
+  cleaner            User?      @relation(fields: [cleanerId], references: [id])
+  completionImageUrl String?
+  completedAt        DateTime?
+  verifiedAt         DateTime?
+  payoutId           String?
+  payoutAmount       Float?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  @@index([status])
+  @@index([cleanerId])
+  @@map("jobs")
+}
+
+model WebSession {
+  id         String    @id @default(cuid())
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id])
+  userAgent  String
+  ipAddress  String?
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+
+  @@map("web_sessions")
+}
+
+model PageView {
+  id         String    @id @default(cuid())
+  path       String
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id])
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id])
+  createdAt  DateTime  @default(now())
+
+  @@map("page_views")
+}
+
+enum UserRole {
+  CITIZEN
+  CLEANER
+  ADMIN
+}
+
+enum CampaignStatus {
+  ACTIVE
+  FUNDED
+  COMPLETED
+  EXPIRED
+}
+
+enum JobStatus {
+  AVAILABLE
+  CLAIMED
+  COMPLETED
+  VERIFIED
+  PAID
+}
