@@ -73,6 +73,11 @@ export default function Header() {
                                                 My Jobs
                                             </MenuItem>
                                         )}
+                                        {user.role === 'CITIZEN' && (
+                                            <MenuItem onClick={() => router.push('/campaigns/my-campaigns')}>
+                                                My Campaigns
+                                            </MenuItem>
+                                        )}
                                         {user.role === 'ADMIN' && (
                                             <MenuItem onClick={() => window.open('/admin', '_blank')}>
                                                 Admin Panel
