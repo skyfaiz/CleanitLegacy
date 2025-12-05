@@ -31,4 +31,17 @@ router.post('/:jobId/complete',
     jobController.completeJob
 );
 
+// Unclaim a job
+router.post('/:jobId/unclaim',
+    authenticateToken,
+    requireRole('CLEANER'),
+    jobController.unclaimJob
+);
+
+// Get job by ID
+router.get('/:jobId',
+    authenticateToken,
+    jobController.getJobById
+);
+
 module.exports = router;

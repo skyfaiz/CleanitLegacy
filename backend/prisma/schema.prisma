@@ -15,15 +15,22 @@ model User {
   password      String
   role          UserRole       @default(CITIZEN)
   avatarUrl     String?
+  isActive      Boolean        @default(true)
+  isSuspended   Boolean        @default(false)
+  suspendedAt   DateTime?
+  suspendReason String?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   
   // Relations
-  campaigns     Campaign[]
-  contributions Contribution[]
-  jobs          Job[]
-  webSessions   WebSession[]
-  pageViews     PageView[]
+  campaigns      Campaign[]
+  contributions  Contribution[]
+  jobs           Job[]
+  webSessions    WebSession[]
+  pageViews      PageView[]
+  notifications  Notification[]
+  cleanerProfile CleanerProfile?
+  activityLogs   ActivityLog[]
 
   @@map("users")
 }
@@ -41,6 +48,11 @@ model Campaign {
   status        CampaignStatus  @default(ACTIVE)
   creatorId     String
   creator       User            @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  expiresAt     DateTime?
+  cancelledAt   DateTime?
+  cancelReason  String?
+  refundStatus  RefundStatus?
+  isFirstTime   Boolean         @default(true)  // First-time user requires admin approval
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   
@@ -50,43 +62,75 @@ model Campaign {
   pageViews     PageView[]
 
   @@index([status, createdAt])
+  @@index([status, expiresAt])
   @@index([location])
   @@map("campaigns")
 }
 
 model Contribution {
-  id         String   @id @default(cuid())
-  amount     Float
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  campaignId String
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  paymentId  String?
-  status     String   @default("pending") // pending, completed, failed
-  createdAt  DateTime @default(now())
+  id                  String             @id @default(cuid())
+  amount              Float
+  userId              String
+  user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaignId          String
+  campaign            Campaign           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  razorpayPaymentId   String?
+  razorpayOrderId     String?
+  status              ContributionStatus @default(PENDING)
+  escrowStatus        EscrowStatus       @default(HELD)
+  refundStatus        RefundStatus?
+  refundAmount        Float?
+  refundInitiatedAt   DateTime?
+  razorpayRefundId    String?
+  refundedAt          DateTime?
+  createdAt           DateTime           @default(now())
+
+  // Relations
+  escrowTransaction   EscrowTransaction?
 
   @@index([campaignId])
   @@index([userId])
+  @@index([status])
   @@map("contributions")
 }
 
 model Job {
-  id                 String     @id @default(cuid())
-  status             JobStatus  @default(AVAILABLE)
-  campaignId         String     @unique
-  campaign           Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  cleanerId          String?
-  cleaner            User?      @relation(fields: [cleanerId], references: [id])
-  completionImageUrl String?
-  completedAt        DateTime?
-  verifiedAt         DateTime?
-  payoutId           String?
-  payoutAmount       Float?
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
+  id                      String          @id @default(cuid())
+  status                  JobStatus       @default(AVAILABLE)
+  campaignId              String          @unique
+  campaign                Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  cleanerId               String?
+  cleaner                 User?           @relation(fields: [cleanerId], references: [id])
+  amount                  Float?          // 95% of campaign target
+  platformFee             Float?          // 5% platform fee
+  claimedAt               DateTime?
+  completionDeadline      DateTime?       // Must complete by this date
+  claimCount              Int             @default(0)
+  lastClaimedBy           String?         // Track previous claimer for re-claim prevention
+  completionImageUrl      String?
+  completionPhotoMetadata Json?           // EXIF data: GPS, timestamp
+  completedAt             DateTime?
+  verifiedBy              String?
+  verifiedAt              DateTime?
+  verificationNotes       String?
+  rejectedAt              DateTime?
+  rejectedBy              String?
+  rejectionReason         RejectionReason?
+  rejectionNotes          String?
+  retryAllowed            Boolean?
+  unclaimedAt             DateTime?
+  unclaimReason           String?
+  expiresAt               DateTime?       // Job expires after 90 days
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+
+  // Relations
+  payout                  Payout?
 
   @@index([status])
   @@index([cleanerId])
+  @@index([status, completionDeadline])
+  @@index([status, expiresAt])
   @@map("jobs")
 }
 
@@ -121,10 +165,12 @@ enum UserRole {
 }
 
 enum CampaignStatus {
+  DRAFT      // Pending admin approval for first-time users
   ACTIVE
   FUNDED
   COMPLETED
   EXPIRED
+  CANCELLED
 }
 
 enum JobStatus {
@@ -133,4 +179,154 @@ enum JobStatus {
   COMPLETED
   VERIFIED
   PAID
+  RELEASED   // Auto-released due to missed deadline
+  FAILED     // Rejected without retry
+}
+
+enum ContributionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum EscrowStatus {
+  HELD
+  RELEASED
+  REFUNDED
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum RejectionReason {
+  POOR_QUALITY
+  WRONG_LOCATION
+  FAKE_COMPLETION
+  PHOTO_ISSUES
+  OTHER
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+}
+
+enum KycStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+// ============================================
+// NEW MODELS FOR PRODUCTION WORKFLOWS
+// ============================================
+
+model CleanerProfile {
+  id                  String    @id @default(cuid())
+  userId              String    @unique
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  completedJobs       Int       @default(0)
+  totalEarnings       Float     @default(0)
+  rating              Float     @default(5.0)
+  activeJobs          Int       @default(0)
+  rejections          Int       @default(0)
+  penalties           Int       @default(0)
+  bankAccountNumber   String?
+  bankIfscCode        String?
+  bankAccountName     String?
+  bankDetailsVerified Boolean   @default(false)
+  razorpayFundAccountId String?
+  kycStatus           KycStatus @default(PENDING)
+  aadhaarNumber       String?
+  panNumber           String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@map("cleaner_profiles")
+}
+
+model EscrowTransaction {
+  id              String       @id @default(cuid())
+  contributionId  String       @unique
+  contribution    Contribution @relation(fields: [contributionId], references: [id], onDelete: Cascade)
+  amount          Float
+  status          EscrowStatus @default(HELD)
+  heldAt          DateTime     @default(now())
+  releasedAt      DateTime?
+  releasedFor     String?      // 'PAYOUT' or 'REFUND'
+  createdAt       DateTime     @default(now())
+
+  @@index([status])
+  @@map("escrow_transactions")
+}
+
+model Payout {
+  id                String       @id @default(cuid())
+  jobId             String       @unique
+  job               Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  cleanerId         String
+  amount            Float
+  status            PayoutStatus @default(PENDING)
+  scheduledFor      DateTime     // 24-hour cooling period after verification
+  razorpayPayoutId  String?
+  initiatedAt       DateTime?
+  paidAt            DateTime?
+  failureReason     String?
+  retryCount        Int          @default(0)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([status, scheduledFor])
+  @@index([cleanerId])
+  @@map("payouts")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // e.g. 'CAMPAIGN_FUNDED', 'JOB_CLAIMED'
+  title     String
+  message   String
+  data      Json?    // Additional context like campaignId, jobId
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String   // e.g. 'JOB_CLAIMED', 'JOB_COMPLETED', 'PAYOUT_RECEIVED'
+  entityType String  // 'campaign', 'job', 'payout'
+  entityId  String
+  metadata  Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([entityType, entityId])
+  @@map("activity_logs")
+}
+
+model CleanerPenalty {
+  id        String   @id @default(cuid())
+  cleanerId String
+  jobId     String
+  reason    String   // 'MISSED_DEADLINE', 'REJECTION', etc.
+  points    Int      @default(1)
+  createdAt DateTime @default(now())
+
+  @@index([cleanerId])
+  @@map("cleaner_penalties")
 }

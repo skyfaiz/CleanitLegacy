@@ -35,4 +35,16 @@ router.delete('/:id',
     campaignController.deleteCampaign
 );
 
+// Cancel campaign
+router.post('/:id/cancel',
+    authenticateToken,
+    campaignController.cancelCampaign
+);
+
+// Get user's own campaigns
+router.get('/user/my-campaigns',
+    authenticateToken,
+    campaignController.getMyCampaigns
+);
+
 module.exports = router;

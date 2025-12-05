@@ -11,10 +11,17 @@ const contributionRoutes = require('./routes/contributionRoutes');
 const jobRoutes = require('./routes/jobRoutes');
 const userRoutes = require('./routes/userRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
+const webhookRoutes = require('./routes/webhookRoutes');
 
 // Import middleware
 const errorHandler = require('./middleware/errorHandler');
 const { authenticateToken } = require('./middleware/auth');
+
+// Import cron jobs and services
+const { initializeCronJobs } = require('./cron');
+// Initialize notification service listeners (side effect import)
+require('./services/notificationService');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -49,6 +56,8 @@ app.use('/api/contributions', contributionRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/users', authenticateToken, userRoutes);
 app.use('/api/admin', authenticateToken, adminRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/webhooks', webhookRoutes);
 
 // 404 handler
 app.use((req, res) => {
@@ -62,6 +71,11 @@ app.use(errorHandler);
 const server = app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
+  
+  // Initialize cron jobs in production/development (not in test)
+  if (process.env.NODE_ENV !== 'test') {
+    initializeCronJobs();
+  }
 });
 
 // Handle port already in use error

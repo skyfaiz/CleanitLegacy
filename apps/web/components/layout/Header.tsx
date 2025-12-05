@@ -15,6 +15,7 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useAuth } from '../../hooks/useAuth';
+import NotificationBell from '../notifications/NotificationBell';
 
 export default function Header() {
     const { user, logout } = useAuth();
@@ -46,6 +47,7 @@ export default function Header() {
                                 <Link href="/campaigns/create">
                                     <Button colorScheme="green">Start Campaign</Button>
                                 </Link>
+                                <NotificationBell />
                                 <Menu>
                                     <MenuButton>
                                         <HStack>
