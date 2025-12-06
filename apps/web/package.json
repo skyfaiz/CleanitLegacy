@@ -24,6 +24,7 @@
         "date-fns": "^3.0.6"
     },
     "devDependencies": {
+        "@types/google.maps": "^3.55.0",
         "@types/node": "^20.10.5",
         "@types/react": "^18.2.45",
         "typescript": "^5.3.3"

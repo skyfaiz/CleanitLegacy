@@ -66,7 +66,25 @@ export default function CampaignDetail({ campaign }: any) {
 
                     <Box mb={6}>
                         <Heading size="md" mb={3}>Location</Heading>
-                        <Text color="gray.700">📍 {campaign.location}</Text>
+                        <Text color="gray.700" mb={3}>📍 {campaign.location}</Text>
+                        
+                        {/* Google Static Map */}
+                        {campaign.latitude && campaign.longitude && process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY && (
+                            <Box borderRadius="lg" overflow="hidden" borderWidth={1}>
+                                <Image
+                                    src={`https://maps.googleapis.com/maps/api/staticmap?center=${campaign.latitude},${campaign.longitude}&zoom=15&size=600x300&scale=2&markers=color:red%7C${campaign.latitude},${campaign.longitude}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`}
+                                    alt="Campaign location map"
+                                    w="full"
+                                    h="250px"
+                                    objectFit="cover"
+                                />
+                                <Box p={2} bg="gray.50">
+                                    <Text fontSize="xs" color="gray.500">
+                                        Coordinates: {campaign.latitude.toFixed(6)}, {campaign.longitude.toFixed(6)}
+                                    </Text>
+                                </Box>
+                            </Box>
+                        )}
                     </Box>
 
                     {campaign.job && (

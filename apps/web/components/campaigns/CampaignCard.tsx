@@ -15,6 +15,8 @@ interface Campaign {
     title: string;
     imageUrl: string;
     location: string;
+    latitude?: number;
+    longitude?: number;
     targetAmount: number;
     amountRaised: number;
     status: string;

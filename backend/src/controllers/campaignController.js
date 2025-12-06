@@ -224,6 +224,24 @@ exports.createCampaign = async (req, res, next) => {
         const userId = req.user.userId;
         const parsedTarget = parseFloat(targetAmount);
 
+        // Validate location coordinates (required for new campaigns)
+        const parsedLat = latitude ? parseFloat(latitude) : null;
+        const parsedLng = longitude ? parseFloat(longitude) : null;
+
+        if (!parsedLat || !parsedLng) {
+            return res.status(400).json({ 
+                error: 'Location coordinates (latitude and longitude) are required. Please select a location on the map.' 
+            });
+        }
+
+        if (parsedLat < -90 || parsedLat > 90) {
+            return res.status(400).json({ error: 'Invalid latitude value' });
+        }
+
+        if (parsedLng < -180 || parsedLng > 180) {
+            return res.status(400).json({ error: 'Invalid longitude value' });
+        }
+
         // Enhanced validation
         if (title.length < VALIDATION.TITLE_MIN || title.length > VALIDATION.TITLE_MAX) {
             return res.status(400).json({ 
@@ -248,31 +266,29 @@ exports.createCampaign = async (req, res, next) => {
         }
 
         // Spam detection: Check for too many campaigns from same location
-        if (latitude && longitude) {
-            const nearbyCampaigns = await prisma.campaign.findMany({
-                where: {
-                    creatorId: userId,
-                    status: { in: ['ACTIVE', 'DRAFT'] },
-                    latitude: { not: null },
-                    longitude: { not: null }
-                }
-            });
-
-            const campaignsAtLocation = nearbyCampaigns.filter(c => {
-                const distance = getDistanceFromLatLonInKm(
-                    parseFloat(latitude),
-                    parseFloat(longitude),
-                    c.latitude,
-                    c.longitude
-                );
-                return distance <= VALIDATION.LOCATION_RADIUS_KM;
-            });
-
-            if (campaignsAtLocation.length >= VALIDATION.MAX_CAMPAIGNS_SAME_LOCATION) {
-                return res.status(400).json({ 
-                    error: 'Too many campaigns from this location. Please wait for existing campaigns to complete.' 
-                });
+        const nearbyCampaigns = await prisma.campaign.findMany({
+            where: {
+                creatorId: userId,
+                status: { in: ['ACTIVE', 'DRAFT'] },
+                latitude: { not: null },
+                longitude: { not: null }
             }
+        });
+
+        const campaignsAtLocation = nearbyCampaigns.filter(c => {
+            const distance = getDistanceFromLatLonInKm(
+                parsedLat,
+                parsedLng,
+                c.latitude,
+                c.longitude
+            );
+            return distance <= VALIDATION.LOCATION_RADIUS_KM;
+        });
+
+        if (campaignsAtLocation.length >= VALIDATION.MAX_CAMPAIGNS_SAME_LOCATION) {
+            return res.status(400).json({ 
+                error: 'Too many campaigns from this location. Please wait for existing campaigns to complete.' 
+            });
         }
 
         // Check if first-time user (needs admin approval)
@@ -297,8 +313,8 @@ exports.createCampaign = async (req, res, next) => {
                 location,
                 targetAmount: parsedTarget,
                 imageUrl,
-                latitude: latitude ? parseFloat(latitude) : null,
-                longitude: longitude ? parseFloat(longitude) : null,
+                latitude: parsedLat,
+                longitude: parsedLng,
                 creatorId: userId,
                 expiresAt,
                 isFirstTime,

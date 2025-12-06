@@ -16,12 +16,21 @@ import { useState } from 'react';
 import { useRouter } from 'next/router';
 import { useForm } from 'react-hook-form';
 import { apiClient } from '../../lib/api';
+import LocationPicker from '../../components/LocationPicker';
+
+interface LocationData {
+    address: string;
+    latitude: number;
+    longitude: number;
+}
 
 export default function CreateCampaign() {
     const { register, handleSubmit, formState: { errors } } = useForm();
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [location, setLocation] = useState<LocationData | null>(null);
+    const [locationError, setLocationError] = useState<string | undefined>(undefined);
     const toast = useToast();
     const router = useRouter();
 
@@ -48,6 +57,18 @@ export default function CreateCampaign() {
             return;
         }
 
+        if (!location || !location.latitude || !location.longitude) {
+            setLocationError('Please select a location on the map');
+            toast({
+                title: 'Location required',
+                description: 'Please select a location on the map',
+                status: 'error',
+                duration: 3000
+            });
+            return;
+        }
+        setLocationError(undefined);
+
         setIsLoading(true);
 
         try {
@@ -55,7 +76,9 @@ export default function CreateCampaign() {
             formData.append('image', imageFile);
             formData.append('title', data.title);
             formData.append('description', data.description);
-            formData.append('location', data.location);
+            formData.append('location', location.address);
+            formData.append('latitude', location.latitude.toString());
+            formData.append('longitude', location.longitude.toString());
             formData.append('targetAmount', data.targetAmount);
 
             const token = localStorage.getItem('token');
@@ -128,13 +151,15 @@ export default function CreateCampaign() {
                         />
                     </FormControl>
 
-                    <FormControl isRequired isInvalid={!!errors.location}>
-                        <FormLabel>Location</FormLabel>
-                        <Input
-                            {...register('location', { required: true })}
-                            placeholder="e.g., MG Road, Bangalore"
-                        />
-                    </FormControl>
+                    <LocationPicker
+                        value={location || undefined}
+                        onChange={(loc) => {
+                            setLocation(loc);
+                            setLocationError(undefined);
+                        }}
+                        error={locationError}
+                        isRequired
+                    />
 
                     <FormControl isRequired isInvalid={!!errors.targetAmount}>
                         <FormLabel>Target Amount (₹)</FormLabel>
