@@ -1,0 +1,196 @@
+Cleanit-
+
+
+We see litter all around us, all over the world and especially India.
+For years governments and non government entities have tried to solve this issue but i think it’d be safe to say they all have failed to make any large scale impact.
+
+We bring the power back directly to the primary benificiary of the cleanup, that is we the citizens.
+
+How do we plan to achieve this?
+
+We are building an app that would gamify cleanup while adding incentives for users to participate in cleanups.
+
+The app would contain many features which we will further list  but this is the bare bones structure:-
+
+Any user registered on the app can report litter they see in public places which they desire to get cleaned up in the following manner:               
+? Post a picture of the litter along with its location tag i.e create a campaign
+? Pledge the amount you think the cleanup is worth
+? Other people can contribute in the campaign.
+? One or many verified cleaners can chose to clean that litter for a reward that would come from the pledged amount.
+? After the cleanup is done and verified, money is released for the cleaners
+? After a spot is cleaned, it’s before and after pictures are uploaded, users can choose to reward exceptional cleanup and beautification attempts by rewarding the cleaners with tips. 
+
+How we make profit : 
+
+ We take a 10% cut from the campaign donations that are made before the cleanup.
+
+Any tips for beautification/ exceptional cleanup that are given after the cleanup we take 30-40% cut.
+
+The margins can be adjusted later but this will be the primary source of revenue for the app in the initial days.
+
+Eventual plan is to create a recurring revenue model for the app.
+
+
+
+Eventual goal/ Final Plan/ long term vision
+
+The idea is to eventually create users to pledge a certain amount per month for the cleanup effort in their area/ locality/city/country/world. This would create a pool of money, which can be automatically judiciously be directed towards cleanups using the power of Artificial Intelligence.
+
+The hassle users will face of individually contributing to campaigns would be eventually done away with because the funds from the pool should suffice.
+
+They would get to see how each penny of their money is being used in a gamified manner and they would get to see the impact their money is having in the form of verified before and after pictures.
+
+After any litter is reported and verified a cleaner is deployed within minutes just like blinkit or zepto, the reporter is not obliged to pay anything if he has already pledged money on a monthly basis.
+
+
+Marketing and initial traction: 
+
+Weplan to leverage the power of social media to market the app.
+
+
+Initial ask and operating expenses justified
+
+We are planning to build an MVP that could scale to at least a million users easily, reasons for which should be obvious by our business model.
+
+For a Minimum Viable Product (MVP) that handles this scale, you are looking at:
+? 50 - 80 Lakhs (approx. $60,000 - $100,000 USD)
+
+For a Full-Featured, Scalable Application with advanced features, high-end design, and a robust backend:
+? 1.5 - 3 Crores+ (approx. $180,000 - $360,000+ USD)
+
+These costs cover development, initial infrastructure setup, and project management for the first year. Ongoing costs (hosting, support, updates) will be extra.
+
+---
+
+Detailed Cost Breakdown
+
+The cost is divided into several key areas:
+
+1. Team and Development Costs (The Biggest Chunk)
+
+This is the cost of the people building the app. Location and team structure greatly affect the price.
+
+Team Structure Pros Cons Estimated Cost (for 6-9 months)
+Indian Tech Agency All-in-one solution, project management handled. Can be expensive, quality varies. ? 60 Lakhs - 1.5 Crores
+Freelancers (India) Lowest cost. High management overhead, risk of inconsistency. ? 30 - 70 Lakhs (High Risk)
+In-House Team Best control and alignment. Highest operational overhead (salaries, office). ? 1 - 2 Crores+ (Annual Salaries)
+Hybrid (Recommended) Balance of cost, control, and quality. Requires a technical founder/PM to manage. ? 50 Lakhs - 1.2 Crores
+
+Key Roles You Need:
+
+· Project/Product Manager: ? 10-18 LPA
+· UI/UX Designer: ? 8-15 LPA
+· Backend Developer (2-3): ? 12-25 LPA each (Critical for scalability)
+· Android & iOS Developers (2): ? 10-20 LPA each
+· DevOps Engineer (Part-time/Consultant): ? 15-25 LPA
+· QA Engineer (1-2): ? 6-12 LPA each
+
+2. Tech Stack & Infrastructure Costs
+
+Building for 1 million active users means you cannot use cheap, unscalable solutions from day one.
+
+· Backend: Node.js, Python (Django/Flask), Java, or Go. Go is excellent for high concurrency.
+· Database: A combination is needed: PostgreSQL (primary data) + Redis (caching, sessions) + MongoDB (for some geolocation data). Cost: Scalable cloud databases are a significant ongoing expense.
+· Geolocation Services:
+  · Google Maps Platform: Powerful but costs based on API calls. For 1M users, this can run into thousands of dollars per month.
+  · Mapbox: Often more cost-effective for custom maps and high volume.
+  · OSM (OpenStreetMap) + Self-Hosting: Lowest cost but high technical overhead.
+· Cloud Hosting (AWS, Google Cloud, Azure): You'll use services like EC2/Compute Engine, S3/Cloud Storage, Load Balancers, and Cloud CDN. For 1M active users, expect initial monthly bills of ? 75,000 - ? 2,00,000+ that will grow with traffic.
+· Payment Gateway Integration:
+  · UPI: Integration with providers like Razorpay, Cashfree, or PayU. They charge a small fee per transaction (typically ~1% for UPI, 2-3% for cards).
+  · Cards: Same providers. The integration is a one-time dev cost; the transactional fees are ongoing.
+
+3. Third-Party Services & APIs (Annual/Monthly Costs)
+
+· Push Notifications: Firebase (FCM) / OneSignal
+· Analytics: Mixpanel, Amplitude, or Firebase Analytics
+· Crash Reporting: Crashlytics / Sentry
+· CDN & Media Storage: AWS CloudFront / Cloudflare
+· Communication: Twilio / Msg91 for SMS/OTP
+· ****Total for these services: ? 50,000 - ? 2,00,000 per month at scale.
+
+---
+
+Phased Approach to Manage Cost and Risk
+
+Do not build the entire system at once. A phased approach is crucial.
+
+Phase 1: MVP (Months 1-6)
+
+Goal: Validate the core idea with a limited user base (10,000 users) in one city.
+
+· Features: Basic user profiles, core geolocation feature (e.g., check-in, simple tracking), integrated UPI payments (via Razorpay SDK), simple UI.
+· Infrastructure: Start with a scalable but not over-provisioned cloud setup.
+· Cost: ? 50 - 80 Lakhs
+
+Phase 2: Scaling & Enhancement (Months 7-12)
+
+Goal: Handle growing traffic (100,000 users) and add critical features.
+
+· Features: Refine UI/UX, add card payments, advanced geolocation features, admin panel, basic analytics.
+· Infrastructure: Invest heavily in backend optimization, implement robust caching (Redis), use a CDN, and set up proper database read-replicas.
+· Cost: ? 40 - 70 Lakhs
+
+Phase 3: Growth & Optimization (Year 2+)
+
+Goal: Scale to 1 million+ active users across India.
+
+· Features: Advanced features, personalization, machine learning recommendations, microservices architecture.
+· Infrastructure: Full microservices, advanced load balancing, multi-region deployment for low latency, dedicated DevOps team.
+· Cost: ? 1 Crore+ (Significant ongoing investment)
+
+---
+
+Critical Factors for Scalability in the Indian Context
+
+1. Geolocation at Scale:
+   · Battery Efficiency: Constant GPS tracking drains battery. You must use intelligent, adaptive location polling.
+   · Offline Functionality: Network issues are common. The app must handle offline actions and sync when online.
+   · Map Tiles & Data Caching: Cache map data aggressively to reduce API costs and improve load times.
+2. Payment Gateway Reliability:
+   · Fallback Options: If UPI is down, offer card payments or wallet options. Redundancy is key.
+   · PCI-DSS Compliance: Even if using a gateway like Razorpay that handles most of it, you still have some security responsibilities.
+   · UPI Intent Flow: Use the UPI Intent flow for the highest success rates, as it redirects to the user's preferred UPI app.
+3. Handling Indian Traffic & Diversity:
+   · App Size: Keep the APK/IPA small for users with limited storage and data plans.
+   · Low-Bandwidth UX: Design the app to be functional on 2G/3G networks.
+   · Multi-language Support: To reach a wider audience, plan for Hindi and other regional languages.
+
+Summary of Ongoing Costs (Post-Launch)
+
+· Cloud Infrastructure & Hosting: ? 1 - 5 Lakhs/month (can be much higher during peaks)
+· Third-Party APIs (Maps, SMS, etc.): ? 50,000 - ? 3 Lakhs/month
+· Payment Gateway Transaction Fees: A percentage of your revenue.
+· Maintenance & Support Team: ? 2 - 5 Lakhs/month (for a small team to handle bugs, updates, and minor features).
+
+………….
+……….
+…………..
+
+Xxxxxxxxxxxxxxxxxxxxxxxxx
+
+Projections
+
+The above ask is justified by the value that we are proposing to build which will be clear by the projections, to call these projections as conservative is an  understatement, these are super conservative as would be clear to anyone who understands the vision clearly.
+
+Core Assumptions for the 5-Year Model (20% Gross Margin)
+
+1. Goal: 10 Million Paid Subscribers by End of Year 5 (Month 60).
+2. Pricing (ARPU): ?310 per month (unchanged).
+3. Gross Profit Margin: 20% (This implies better unit economics, e.g., lower payouts to cleaners, more efficient operations, or higher-tier mix).
+4. Growth Phases: Unchanged (Years 1-2: Traction, Years 3-4: Scaling, Year 5: Maturation).
+
+---
+
+
+
+
+
+
+
+
+
+
+
+
+

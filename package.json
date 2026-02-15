@@ -5,7 +5,8 @@
   "workspaces": [
     "apps/*",
     "packages/*",
-    "backend"
+    "backend",
+    "Design Cleanit Web UI"
   ],
   "scripts": {
     "dev": "concurrently \"npm:dev:*\"",

@@ -57,16 +57,6 @@ export default function CreateCampaign() {
             return;
         }
 
-        if (!location || !location.latitude || !location.longitude) {
-            setLocationError('Please select a location on the map');
-            toast({
-                title: 'Location required',
-                description: 'Please select a location on the map',
-                status: 'error',
-                duration: 3000
-            });
-            return;
-        }
         setLocationError(undefined);
 
         setIsLoading(true);
@@ -76,9 +66,15 @@ export default function CreateCampaign() {
             formData.append('image', imageFile);
             formData.append('title', data.title);
             formData.append('description', data.description);
-            formData.append('location', location.address);
-            formData.append('latitude', location.latitude.toString());
-            formData.append('longitude', location.longitude.toString());
+
+            const locationName = location?.address?.trim() || 'Location not specified';
+            formData.append('location', locationName);
+
+            if (location && location.latitude && location.longitude) {
+                formData.append('latitude', location.latitude.toString());
+                formData.append('longitude', location.longitude.toString());
+            }
+
             formData.append('targetAmount', data.targetAmount);
 
             const token = localStorage.getItem('token');
@@ -158,7 +154,7 @@ export default function CreateCampaign() {
                             setLocationError(undefined);
                         }}
                         error={locationError}
-                        isRequired
+                        isRequired={false}
                     />
 
                     <FormControl isRequired isInvalid={!!errors.targetAmount}>

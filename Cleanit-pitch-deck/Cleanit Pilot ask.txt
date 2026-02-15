@@ -1,0 +1,128 @@
+Cover Page
+
+TAGLINE: Proving the Model: A ?50 Lakh Pilot to Validate India's First Self-Funding Cleanup Engine.
+DATE: [Date of Presentation]
+PRESENTER NAME: 
+
+---
+
+The Pre-Seed Objective: De-risking the Vision
+
+We are seeking ?50 Lakhs to run a 6-month, data-driven pilot in a single, controlled environment. The goal is not to build the final product, but to de-risk the core business hypotheses and create immense value by proving:
+
+1. User Hypothesis: Will people consistently report litter and pledge money?
+2. Cleaner Hypothesis: Will cleaners reliably complete jobs for the offered reward?
+3. Transaction Hypothesis: Can we facilitate a seamless, trusted transaction from report to payment?
+4. Unit Economics Hypothesis: Can we achieve a positive contribution margin on each transaction?
+
+Success in this pilot will position us for a significantly larger and higher-valuation Seed Round.
+
+---
+
+The Lean MVP: A Hyper-Focused "City-in-a-Box" Pilot
+
+We will not build the full, scalable app. We will build a Minimum Viable Product (MVP) that proves the core loop in one manageable location.
+
+Pilot Location: A Large University Campus (e.g., IIT Kharagpur) or a Large Gated Residential Society.
+
+· Controlled Environment: Bounded geography, defined user & cleaner base.
+· High Density: Concentrated litter problems for high visibility.
+· Built-in Community: Easier to drive initial adoption and word-of-mouth.
+
+MVP Core Features (The Absolute Essentials):
+
+1. User App:
+   · Report Litter: Photo, location pin, pledge amount.
+   · View active and completed campaigns.
+   · UPI Payment integration (Razorpay SDK).
+2. Cleaner App:
+   · View available jobs on a simple list/map.
+   · Claim a job.
+   · Upload "after" photo as proof.
+3. Admin Web Panel:
+   · Manual verification of cleanup photos (to keep tech simple).
+   · Manual trigger for payments to cleaners.
+   · Basic dashboard to track KPIs.
+
+Technology Stack for Speed & Cost:
+
+· Frontend: React Native (single codebase for iOS & Android).
+· Backend: Node.js + PostgreSQL (on a single, well-configured cloud server).
+· Maps: OpenStreetMap (free tier) to minimize API costs.
+· Payments: Razorpay for UPI/card processing.
+
+---
+
+Detailed Use of Funds (?50 Lakhs)
+
+This budget is allocated for a 6-month runway to achieve our pilot goals.
+
+Category Allocation (? Lakhs) Justification
+
+1. Lean Tech Team (70%) 35.0 The critical investment. 1 Project Lead, 1 Full-Stack Developer, 1 UI/UX Designer (freelance). Covers 6 months of salaries/stipends.
+2. Cloud Infrastructure & Services (10%) 5.0 Server hosting, database, payment gateway fees, and essential third-party APIs (SMS, analytics).
+3. Pilot Marketing & Operations (15%) 7.5 On-ground activation, digital ads within the campus/society, initial incentives for first users/cleaners, and operational contingencies.
+4. Legal & Compliance (5%) 2.5 Company registration, GST, and payment gateway compliance.
+TOTAL 50.0 
+
+---
+
+Key Milestones & Deliverables (6-Month Timeline)
+
+· Month 1-2: Team formation, finalize scope, and develop MVP.
+· Month 3: Soft launch to a small user group (e.g., a single hostel). Iron out bugs.
+· Month 4-5: Full pilot launch across the entire campus/society. Aggressive user/cleaner onboarding. Goal: 1,000 active users, 50 active cleaners.
+· Month 6: Data Collection & Validation. Operate and measure relentlessly.
+
+---
+
+Defining Value: The Pre-Seed KPIs
+
+Value at this stage is measured by validated learning and traction metrics, not just revenue. We will deliver:
+
+1. A Functional, Though Lean, Product: A working MVP that has processed real transactions.
+2. Validated Unit Economics:
+   · Average Pledge per Campaign: Target: ?150-?300.
+   · Cleaner Payout Efficiency: Demonstrate ability to manage payouts at 80-90% of pledge.
+   · Contribution Margin per Transaction: (Platform Fee - Direct Costs). Target: Positive.
+3. Proof of Engagement:
+   · Monthly Active Users (MAU): 1,000+
+   · Campaign Completion Rate: >70%
+   · User Retention (Month 1-3): Demonstrate repeat usage.
+4. A Compelling Seed Round Narrative:
+   · A video demo of the live app.
+   · A deck filled with real data and user testimonials.
+   · A clear, proven plan for scaling from 1 campus to 1 city.
+
+---
+
+The Roadmap: From Pilot to Seed
+
+Pre-Seed (Now - ?50 Lakhs)
+
+· Goal: Prove the core transaction works in one closed loop.
+· Output: Validated KPIs, a working MVP, and a compelling data pack.
+
+Seed Round (Target: ?3-5 Crores)
+
+· Goal: Scale the validated model to an entire city (e.g., Bangalore).
+· Use of Funds: Build the scalable tech platform, expand the team, and execute the city-wide GTM strategy.
+· Valuation Driver: De-risked model with proven unit economics.
+
+Our ask of ?50 Lakhs is the key to unlocking the ?5 Crore Seed Round. We are not asking for money to build a dream; we are asking for the resources to prove that the dream is a viable, fundable business.
+
+---
+
+Appendix: Pre-Seed Projections (Pilot Phase)
+
+Metric Pilot Target
+Duration 6 Months
+Pilot Location 1 Campus/Large Society
+Active Users 1,000
+Active Cleaners 50
+Campaigns Completed 500
+Total Transaction Value ?1,00,000 - ?2,00,000
+Platform Revenue (10% fee) ?10,000 - ?20,000
+Key Validation Positive Contribution Margin
+
+This pilot is designed to be a low-cost, high-insight experiment that dramatically increases our valuation and appeal for the next stage of our journey.

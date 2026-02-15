@@ -13,6 +13,8 @@ const userRoutes = require('./routes/userRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const webhookRoutes = require('./routes/webhookRoutes');
+const cleantipRoutes = require('./routes/cleantipRoutes');
+const tipRoutes = require('./routes/tipRoutes');
 
 // Import middleware
 const errorHandler = require('./middleware/errorHandler');
@@ -58,6 +60,8 @@ app.use('/api/users', authenticateToken, userRoutes);
 app.use('/api/admin', authenticateToken, adminRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/webhooks', webhookRoutes);
+app.use('/api/cleantips', cleantipRoutes);
+app.use('/api/tips', tipRoutes);
 
 // 404 handler
 app.use((req, res) => {
