@@ -1,6 +1,6 @@
 # Cleanit - Gamifying India's Cleanup Movement
 
-> **⚠️ Legacy Codebase Notice**: This repository contains the original implementation of Cleanit. A complete rewrite with FastAPI backend and Next.js frontend is planned. See `/new-implementation-guide/` for the new architecture.
+
 
 ## 🌟 Overview
 
@@ -279,21 +279,7 @@ cd "Design Cleanit Web UI"
 npm test
 ```
 
-## 🚀 Deployment
 
-### Option 1: Docker Compose (Recommended for development)
-```bash
-docker-compose up --build
-```
-
-### Option 2: Manual Deployment
-1. Deploy PostgreSQL and Redis
-2. Deploy backend to any Node.js hosting (Heroku, Railway, AWS)
-3. Deploy frontend to Vercel/Netlify
-4. Configure environment variables
-
-### Option 3: Kubernetes (Production)
-- See `/infrastructure/` for Kubernetes manifests (if available)
 
 ## 📝 Contributing
 
@@ -309,7 +295,7 @@ MIT License
 ## 🔗 Links
 
 - **GitHub**: https://github.com/skyfaiz/CleanitLegacy
-- **Documentation**: See `/new-implementation-guide/` for rewrite docs
+- 
 
 ## ⚠️ Known Issues
 
